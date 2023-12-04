@@ -1,0 +1,240 @@
+---
+title: "Untitled"
+author: "Yutong Lu"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+Analyzing simulated dataset for scenario 4
+
+# Packages and working directory
+```{r}
+library(tidyverse)
+library(survey)
+library(arm)
+library(ltmle)
+library(ipw) #MSM;
+library(gfoRmula) #g-computation;
+library(gtsummary)
+
+#This sets the working directory to the current location of the RMD file
+path <- rstudioapi::getActiveDocumentContext()$path
+Encoding(path) <- "UTF-8"
+setwd(dirname(path))
+```
+
+# Loading simulated dataset 4
+```{r}
+dat4 <- read_csv("datasets/scenario_4_wide_dataset.csv")
+dat4_new <- read_csv("datasets/scenario_4_long_dataset.csv")
+```
+
+# Exploring data
+```{r}
+dat4_new %>% 
+  tbl_summary()
+```
+
+# gfoRmula package
+
+```{r}
+id <- 'id'
+time_name <- 'time'
+covnames <- c("L1", "L2", "a")
+outcome_name <- 'y'
+covtypes <- c('binary', 'normal', 'binary')
+histories <- c(lagged)
+histvars <- list(c('a', 'L1', 'L2'))
+
+covparams <- list(covmodels = c(L1 ~ w1 + w2 + lag1_L1 + lag1_a,
+                                L2 ~ w1 + w2 + lag1_L2 + lag1_a,
+                                a ~ w1 + w2 + lag1_L1 + L1 + lag1_L2 + L2 + lag1_a))
+ymodel <- y ~ lag1_a + a + lag1_a*a + w1 + w2 + L1 + L2 + lag1_L1 + lag1_L2
+
+intvars <- list('a', 'a')
+interventions <- list(list(c(static, rep(0, 2))),
+                      list(c(static, rep(1, 2))))
+int_descript <- c('Never treat', 'Always treat')
+
+# we have two censors, c_1 and c_2
+censor_name <- 'c'
+censor_model <- c ~ w1 + w2 + lag1_L1 + lag1_L2 + lag1_a
+
+gform_censor <- gformula_continuous_eof(
+  obs_data = dat4_new,
+  id = id,
+  time_name = time_name,
+  covnames = covnames,
+  outcome_name = outcome_name, 
+  covtypes = c("binary", "normal", "binary"),
+  covparams = covparams,  ymodel = ymodel,
+  censor_name = censor_name, censor_model = censor_model,
+  intvars = intvars, interventions = interventions,
+  int_descript = int_descript, ref_int = 1,
+  histories = c(lagged), histvars = list(c('a',"L1","L2")),
+  basecovs = c("w1","w2"), nsimul = 1000,
+  nsamples = 1000, parallel = TRUE, ncores = 2,
+  seed = 123)
+
+gform_censor
+```
+
+# ltmle
+
+```{r}
+# tmle without superlearner + kitchen sink gform + null Qform (kitchen sink);
+tmle_model <- ltmle(dat4,
+                    Anodes = c ("a_1","a_2"),
+                    Lnodes = c ("L1_1", "L2_1", "L1_2", "L2_2"), 
+                    Ynodes = c("y"), 
+                    Cnodes = c("c_1", "c_2"),
+                    survivalOutcome =FALSE,
+                    # Qform = c( L1_2 = "Q.kplus1 ~ w1 + w2 + L1_1 + a_1",
+                    #            y = "Q.kplus1 ~ w1 + w2 + L1_2 + L2_2 + a_1 + a_2 + a_1*a_2"),
+                    gform = c("a_1 ~ w1 + w2 + L1_1 + L2_1",
+                              "c_1 ~ w1 + w2",
+                              "c_2 ~ w1 + w2 + L1_1 + L2_1 + a_1",
+                              "a_2 ~ w1 + w2 + L1_1 + L2_1 + a_1 + L1_2 + L2_2"),
+                    # gcomp = TRUE,
+                    # iptw.only = FALSE,
+                    # variance.method = "tmle",
+                    # SL.library = "default", #with superlearner;
+                    abar = list(c(1,1), c(0,0)),
+                    estimate.time = FALSE)
+
+
+summary(tmle_model, estimator="tmle")
+
+# tmle with superlearner + kitchen sink gform + null Qform;
+tmle_model <- ltmle(dat4,
+                    Anodes = c ("a_1","a_2") ,
+                    Lnodes = c ("L1_1", "L2_1", "L1_2", "L2_2"), 
+                    Ynodes = c("y"), 
+                    Cnodes = c("c_1", "c_2"),
+                    survivalOutcome =FALSE,
+                    # Qform = c( L1_2 = "Q.kplus1 ~ w1 + w2 + L1_1 + a_1",
+                    #            y = "Q.kplus1 ~ w1 + w2 + L1_2 + L2_2 + a_1 + a_2 + a_1*a_2"),
+                    gform = c("c_1 ~ w1 + w2",
+                              "a_1 ~ w1 + w2 + L1_1 + L2_1",
+                              "c_2 ~ w1 + w2 + L1_1 + L2_1 + a_1",
+                              "a_2 ~ w1 + w2 + L1_1 + L2_1 + a_1 + L1_2 + L2_2"),
+                    # gcomp = TRUE,
+                    # iptw.only = FALSE,
+                    # variance.method = "tmle",
+                    SL.library = "default", #with superlearner;
+                    abar = list(c(1,1), c(0,0)),
+                    estimate.time = FALSE)
+
+summary(tmle_model, estimator="tmle")
+# Ynodes may not be NA except after censoring
+
+#tmle package for gcomputation + kitchen sink gform + null Qform;
+tmle_model <- ltmle(dat4,
+                    Anodes = c ("a_1","a_2") ,
+                    Lnodes = c ("L1_1", "L2_1", "L1_2", "L2_2"), 
+                    Ynodes = c("y"), 
+                    Cnodes = c("c"),
+                    survivalOutcome =FALSE,
+                    # Qform = c( L1_2 = "Q.kplus1 ~ w1 + w2 + L1_1 + a_1",
+                    #            y = "Q.kplus1 ~ w1 + w2 + L1_2 + L2_2 + a_1 + a_2 + a_1*a_2"),
+                    gform = c("a_1 ~ w1 + w2 + L1_1 + L2_1",
+                              "c ~ w1 + w2 + L1_1 + L2_1 +a_1",
+                              "a_2 ~ w1 + w2 + L1_1 + L2_1 + L1_2 + L2_2 + a_1"),
+                    gcomp = TRUE,
+                    # iptw.only = FALSE,
+                    # variance.method = "tmle",
+                    abar = list(c(1,1), c(0,0)),
+                    estimate.time = FALSE)
+
+summary(tmle_model)
+
+#tmle package for gcomputation + kitchen sink gform + correct Qform;
+tmle_model <- ltmle(dat4,
+                    Anodes = c ("a_1","a_2") ,
+                    Lnodes = c ("L1_1", "L2_1", "L1_2", "L2_2"), 
+                    Ynodes = c("y"), 
+                    Cnodes = c("c"),
+                    survivalOutcome =FALSE,
+                    Qform = c( L1_2 = "Q.kplus1 ~ w1 + w2 + L1_1 + a_1",
+                               y = "Q.kplus1 ~ w1 + w2 + L1_2 + L2_2 + a_1 + a_2 + a_1*a_2"),
+                    gform = c("a_1 ~ w1 + w2 + L1_1 + L2_1",
+                              "c ~ w1 + w2 + L1_1 + L2_1 +a_1",
+                              "a_2 ~ w1 + w2 + L1_1 + L2_1 + L1_2 + L2_2 + a_1"),
+                    gcomp = TRUE,
+                    # iptw.only = FALSE,
+                    # variance.method = "tmle",
+                    abar = list(c(1,1), c(0,0)),
+                    estimate.time = FALSE)
+
+summary(tmle_model)
+```
+
+# iptw
+
+```{r}
+w <- ipwtm(
+  exposure = a,
+  family = "binomial",
+  link = "logit",
+  numerator = ~ w1 + w2,
+  denominator = ~ w1 + w2 + L1 + L2,
+  id = patient,
+  timevar = visit,
+  type = "all",
+  data = as.data.frame(dat4_new))
+
+summary(w)
+#plot inverse probability weights
+graphics.off()
+ipwplot(weights = w$ipw.weights, timevar = dat4_new$visit,
+        binwidth = 1, ylim = c(-1.5, 1.5), main = "Stabilized inverse probability weights")
+
+summary(glm(y ~ a, data = dat4_new, weights = w$ipw.weights))
+
+#calculating weights manually
+# IPT weights:
+
+tmodel1 <- glm(a_1 ~ 1, family=binomial(link=logit), data = dat4)
+tmodel2 <- glm(a_2 ~ a_1, family=binomial(link=logit), data = dat4)
+tmodel2_package <- glm(a_2 ~ 1, family=binomial(link=logit), data = dat4)
+
+
+smodel1 <- glm(a_1 ~ w1 + w2 + L1_1 + L2_1, 
+               family=binomial(link=logit), data = dat4)
+smodel2 <- glm(a_2 ~  w1 + w2 + L1_1 + L2_1 + L1_2 + L2_2 + a_1, 
+               family=binomial(link=logit), data = dat4) #kitchen sink approach
+smodel2_incorrect <- glm(a_2 ~  w1 + w2 +  L1_2 + L2_2, 
+               family=binomial(link=logit), data = dat4)
+
+num <- predict(tmodel1, type = "response", data = dat4)* 
+  predict(tmodel2, type = "response", data = dat4)
+deno <- predict(smodel1, type = "response", data = dat4)* 
+  predict(smodel2, type = "response", data = dat4)
+deno_incorrect <- predict(smodel1, type = "response", data = dat4)* 
+  predict(smodel2_incorrect, type = "response", data = dat4)
+
+num_package <-predict(tmodel1, type = "response", data = dat4)* 
+  predict(tmodel2_package, type = "response", data = dat4)
+
+deno_package<- predict(smodel1, type = "response", data = dat4)* 
+  predict(smodel2_incorrect, type = "response", data = dat4)
+
+weights_package <- num_package/deno_package
+
+correct_weights <- num/deno
+incorrect_weights <- num/deno_incorrect
+
+ds <- svydesign(id=~1, weights = ~ correct_weights, data = dat4)
+summary(svyglm(y ~ as.factor(cum_a), design=ds))
+
+ds_incorrect <- svydesign(id=~1, weights = ~ incorrect_weights, data = dat4)
+summary(svyglm(y ~ as.factor(cum_a), design=ds_incorrect))
+
+ds_package <- svydesign(id=~1, weights = ~ m[,2], data = dat4)
+summary(svyglm(y ~ as.factor(cum_a), design=ds_package))
+
+comparison <- tibble(cbind(m,  weights_package, correct_weights))
+View(comparison)
+```
+
+# END

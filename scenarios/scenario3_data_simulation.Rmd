@@ -1,0 +1,127 @@
+---
+title: "Untitled"
+author: "Yutong Lu"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+Creating the simulated dataset for scenario 3
+
+# Packages and working directory
+```{r}
+library(tidyverse)
+library(arm)
+library(ltmle)
+library(ipw) #MSM;
+library(gfoRmula) #g-computation;
+
+#This sets the working directory to the current location of the RMD file
+path <- rstudioapi::getActiveDocumentContext()$path
+Encoding(path) <- "UTF-8"
+setwd(dirname(path))
+```
+
+# Scenario 3
+
+- 1000 patients and 3 visits
+- y, an end-of-study binary outcome;
+- z, a binary treatment assignment;
+- w1 and w2 are two baseline covariates (one continuous, one binary) i.e., age, sex;
+- L1 and L2 are two time-dependent covariates (one continuous, one binary);
+- censoring = no censoring
+- Interaction = interaction treatment effect on the outcome;
+- linearity = non-linear effect for the outcome model
+
+```{r}
+set.seed(123)
+ntot=1000;
+samplesize=10000
+```
+
+# Visit 1
+```{r}
+# visit 1;
+# covariates;
+w1 <- rbinom(ntot, 1, prob = 0.5) #50-50 male and female (reference);
+w2 <- rnorm(ntot, mean = 12, sd = 4) #age;
+L1_1 <- rbinom(ntot, 1, prob = plogis(-1 + 0.01*w1 + 0.01*w2)) #a age & sex related baseline binary clinical variable;
+L2_1 <- rnorm(ntot, mean = (0.01*w1 + 0.01*w2), sd = 1) #a age & sex related baseline continuous clinical variable;
+
+# Exposure;
+a_1 <- rbinom(ntot, 1, plogis(-1 - 0.01*w1 + 0.01*w2 - 0.1*L1_1 + 0.1*L2_1))
+table(a_1)
+```
+
+# Visit 2
+```{r}
+L1_2 <- rbinom(ntot, 1, plogis(-1 + 0.01*w1 + 0.01*w2 + 0.2*L1_1 - 0.2*a_1))
+L2_2 <- rnorm(ntot, mean = (L2_1 - 0.01*w1 + 0.01*w2 - 0.2*a_1), sd = 1)
+a_2 <- rbinom(ntot, 1, plogis(-1 - 0.01*w1 + 0.01*w2 - 0.1*L1_2 + 0.1*L2_2 + a_1))
+table(a_1, a_2)
+```
+
+# Visit 3
+```{r}
+y <- rnorm(ntot, mean = (1 - 1*a_1 - 2*a_2 + 0.01*a_1*a_2 - 0.2*w1 + 0.1*w2 + 0.4*L1_2 + 0.2*L2_2 + 
+                           exp(L1_2) + 0.02*L2_2^3) , sd = 1)
+mean(y);
+
+id <- rep(1:1000)
+dat3 <- data.frame(id, w1, w2, L1_1, L2_1, a_1, L1_2, L2_2, a_2, y)
+dat3 <- dat3 %>% mutate(cum_a = a_1 + a_2) %>% select(id, cum_a, everything())
+
+mytrue <- function(a_1s = 1, a_2s = 1){
+  #visit 1;
+  w1sim <- rbinom(samplesize, 1, prob = 0.5) #50-50 male and female;
+  w2sim <- rnorm(samplesize, mean = 12, sd = 4) #age;
+  L1_1sim <- rbinom(samplesize, 1, prob = plogis(-1 + 0.01*w1sim + 0.01*w2sim)) #a age related baseline binary clinical variable;
+  L2_1sim <- rnorm(samplesize, mean = (0.01*w1sim + 0.01*w2sim), sd = 1) #a age & sex related baseline continuous clinical variable;
+  
+  #Visit 2, simulate all potential variables;
+  L1_2sim <- rbinom(samplesize, 1, plogis(-1 + 0.01*w1sim + 0.01*w2sim + 0.2*L1_1sim - 0.2*a_1s))
+  L2_2sim <- rnorm(samplesize, mean = (L2_1sim - 0.01*w1sim + 0.01*w2sim - 0.2*a_1s), sd = 1)
+  
+  #Visit 3, simulate potential outcomes;
+  truemean = (1 - 1*a_1s - 2*a_2s + 0.01*a_1s*a_2s - 0.2*w1sim + 0.1*w2sim + 0.4*L1_2sim + 0.2*L2_2sim + 
+                exp(L1_2sim) + 0.02*L2_2sim^3)
+  return(mean(truemean))
+}
+
+mytrue(a_1s = 1, a_2s = 1) #potential outcome Y(a_1=1, a_2=1);
+mytrue(a_1s = 0, a_2s = 0)
+mytrue(a_1s = 1, a_2s = 0)
+mytrue(a_1s = 0, a_2s = 1)
+mytrue(a_1s = 1, a_2s = 1) - mytrue(a_1s = 0, a_2s = 0)
+```
+
+# Creating long dataset
+```{r}
+dat3_new <- dat3 %>%
+  pivot_longer(cols = -c(w1,w2,y,id,cum_a), 
+               names_to = c("variable","visit"), 
+               names_sep = "_", 
+               values_to = "value") %>% 
+  pivot_wider(names_from = variable, values_from = value) %>% 
+  mutate(time = case_when(visit == 1 ~ 0,
+                          visit == 2 ~ 1))
+
+dat3_new$y[dat3_new$visit == 1] <- NA
+
+dat3_new$visit <- as.numeric(dat3_new$visit)
+dat3_new$w1 <- as.numeric(dat3_new$w1)
+
+dat3_new$cum_a[dat3_new$time == 0] <- dat3$a_1
+dat3_new$cum_a[dat3_new$time == 1] <- dat3$a_1+dat3$a_2
+```
+
+# Saving as CSV
+```{r}
+write_csv(dat3,
+          file = "datasets/scenario_3_wide_dataset.csv")
+write_csv(dat3_new,
+          file = "datasets/scenario_3_long_dataset.csv")
+```
+
+# End
+
+
