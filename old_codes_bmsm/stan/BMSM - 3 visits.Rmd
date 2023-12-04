@@ -1,0 +1,539 @@
+---
+title: "BMSM simulator - x11 remains constant"
+author: "Ismail Benchekroun"
+date: "2022-08-18"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(SimDesign)
+library(rstan)
+expit<-function(x){1/(1+exp(-x))}
+logit<-function(p){log(p)-log(1-p)}
+```
+
+## Notes on simulation:
+- can add non-linearity in treatment assignment model
+- autorunjags runs chain until converges
+- 50000 iterations
+
+## Log-likelihood function
+```{r, echo = FALSE}
+loglik2<-function(param,resp,mmat, weight){
+
+  n<-length(resp)
+  ### NOTE: param will have 5 entries, one for each theta (intercept, visit 1 treatment effect, visit 2 treatment effect, visit 1-2 interaction effect) and sigma (response)
+  theta <- param[1:4] 
+  
+  sigma <- param[5]  ## only 1 sigma because end of study outcome.
+
+  e<- (resp - mmat%*%theta)
+  
+  logl <- NA
+
+  if (sigma > 0){
+    
+    logl1<- -0.5*log(sigma^2) - ((e)^2)/(2*(sigma^2)) ## ONly 1 log-likelihood, first one is good
+    
+    logl<- sum(weight*logl1)
+    
+  }
+  return(logl)
+  
+}
+
+```
+
+### JAGS model
+```{r, echo = FALSE}
+cat( " model {
+
+     #N = nobs
+     for (i in 1:N) {
+
+     # conditional treatment assignment model;
+     
+     logit(p1[i]) <- b10 + b11*x1[i] + b12*y1[i]
+     z1[i] ~ dbern(p1[i])
+
+     z2[i] ~ dbern(p2[i])
+     logit(p2[i]) <- b20 + b21*x2[i] + b22*y2[i] + b23*z1[i]
+
+     # marginal treatment assignment model;
+
+     z1s[i] ~ dbern(p1s[i])
+     logit(p1s[i]) <- bs10
+
+     z2s[i] ~ dbern(p2s[i])
+     logit(p2s[i]) <- bs20 + bs21*z1[i]
+     }
+
+     # Priors
+     b10 ~ dunif(-5,5) #true 0;
+     b11 ~ dunif(-5,5) #true 0.2;
+     b12 ~ dunif(-5,5) #true -0.05;
+
+     b20 ~ dunif(-5,5)
+     b21 ~ dunif(-5,5)
+     b22 ~ dunif(-5,5)
+     b23 ~ dunif(-5,5) #true 2
+
+     bs10 ~ dunif(-5,5)
+     bs20 ~ dunif(-5,5)
+     bs21 ~ dunif(-5,5)
+
+     }",
+         file = "model_unif.txt")
+
+
+```
+
+```{r, echo = FALSE}
+
+mysim <- function(from=1, to=1, ntot=500, ncov=2, mean_x1=0.5, mean_x2=7, mean_y=30, sigma_x2 = 1.5, sigma_y = 4,
+  rho13 = -0.5, rho23 = 0.5, rho12 = 0.1, coeffz_x1 = 0.2, coeffz_x2 = 0.1, coeffz_y = -0.05, coeffz_z = 2,
+  coeffy_z= 5, coeffx1_z = -0.3, coeffx2_z = 0.9, niter=15000, nburnin=5000, thin=5, nboot=2000) {
+  
+  i = 1;
+  ## Range of Number of simulation runs - lower bound
+  # from=1;
+  ## Range of Number of simulation runs - upper bound
+  # to=1;
+  ## Sample size
+  # ntot=500;
+  ## Number of covariates
+  # ncov=5;
+  ## Mean of X's and Y
+  # mean_x1=0.5; mean_x2=0.8; mean_x3=7; mean_x4=-0.9; mean_x5=1.5; mean_y=30;
+  ## Standard deviances of X's and Y
+  # sigma_x1 = 1.2; sigma_x2 = 0.8; sigma_x3=0.9; sigma_x4=1.8; sigma_x5=0.2; sigma_y = 4;
+  #
+  ## Correlation coefficients between pairwise X's
+  # rho12 = -0.5; rho13 = 0.5; rho14 = 0.9; rho15=-0.8;
+  # rho23 = 0.1; rho24 = -0.1; rho25 = 0.5;
+  # rho34 = 0.05; rho35 = -0.1;
+  # rho45 = -0.05;
+  #
+  ## Treatment assignment model coefficients
+  # coeffz_x1 = 0.2; coeffz_x2 = 0.04; coeffz_x3 = 0.2; coeffz_x4 = 0.5; coeffz_x5 = 0.1; coeffz_y = -0.05; coeffz_z = 2;
+  #
+  ## Treatment effects on X's
+  # coeffx1_z = -0.3; coeffx2_z = 0.9; coeffx3_z = 0.3; coeffx4_z = 1.9; coeffx5_z = 0.1;
+  # 
+  ## Treatment effect interaction between visit 1 and 2, on X's
+  # trt_int = -.03
+  #
+  ## Covariate effects on Y ### CHANGE NOTATION SO THAT DEPENDENT VARIABLE IS ON LEFT
+  # coeffx1_y = 0.4; coeffx2_y = -1.2; coeffx3_y = -0.9; coeffx4_y = 3; coeffx5_y = 0.9;
+  # coeffx_y = matrix(c(coeffx1_y, coeffx2_y, coeffx3_y, coeffx4_y, coeffx5_y), ncov, 1);
+  #
+  ## Empty y
+  # y =array(NA, c(2, 2, ntot));
+  #
+  ## Number of observations
+  # nobs = 100;
+  #
+  ## Number of discrete variables
+  # ncov_d=2;
+  #
+  ## Intercept effect on Y
+  # alpha = 0.8;
+  #
+  # # Treatment effect on Y at visit 1
+  # effect = 0.6;
+  # # Interaction effect between treatments at visit 1 and 2
+  # effect_int=-0.3
+  # 
+  # #
+  # niter=15000; nburnin=5000; thin=5; nboot=2000;
+
+  samplesize <- (niter - nburnin)/thin
+  results <- matrix(NA, to, 26)
+  
+  ## Number of variables to keep track of, double-counting discrete variables as they will be generated using a continuous counterpart.
+  nL <-ncov + ncov_d
+  
+  
+  for (i in from:to) {
+    
+    ## Setting different seed for each simulation run
+    iter <- 66500 + (i - 1)
+    set.seed(iter)
+    
+    ## Matrix tracking all covariate values for all 3 visits, under each of the 2 Potential Outcomes for the first 2 visits. 
+     #first dimension is 2; represents z1 = 0 and z1 = 1; 
+     #second dimension is 2; represents z2 = 0 and z2 = 1; 
+     #third dimension is ntot; represents number of subjects; 
+     #fourth dimension k*nL represent visits for x1-x5, and x1d and x2d (the discrete versions of x1 and x2), in this order;
+    L <- array(NA, c(2, 2, ntot, 3 * (nL))) 
+   
+    ## Matrix storing "observed" covariate values, so there is only 1 Potential Outcome per visit.
+    Lobs <- matrix(NA, ntot, 3 * (nL))
+    
+    ## Observed treatment assignment
+    z <- matrix(NA, ntot, 2)
+    
+    
+    ### 1. visit 1:
+    
+    ## cov matrix of x1,x2,x3,x4,x5 
+    s <- matrix(c(sigma_x1^2, (rho12)*sigma_x1*sigma_x2, (rho13)*sigma_x1*sigma_x3, (rho14)*sigma_x1*sigma_x4, (rho15)*sigma_x1*sigma_x5,
+                  (rho12)*sigma_x1*sigma_x2, sigma_x2^2, (rho23)*sigma_x3*sigma_x2, (rho24)*sigma_x4*sigma_x2, (rho25)*sigma_x5*sigma_x2,
+                  (rho13)*sigma_x1*sigma_x3, (rho23)*sigma_x2*sigma_x3, sigma_x3^2, (rho34)*sigma_x3*sigma_x4, (rho35)*sigma_x5*sigma_x3,
+                  (rho14)*sigma_x1*sigma_x4, (rho24)*sigma_x4*sigma_x2, (rho34)*sigma_x3*sigma_x4, sigma_x4^2, (rho45)*sigma_x5*sigma_x4,
+                  (rho15)*sigma_x1*sigma_x5, (rho25)*sigma_x5*sigma_x2, (rho35)*sigma_x5*sigma_x3, (rho45)*sigma_x5*sigma_x4, sigma_x5^2), 5, 5) 
+    
+    ## Generating continuous X's
+    Lobs[,1:(nL-ncov_d)] <- L[1,1,,1:(nL-ncov_d)] <- L[1,2,,1:(nL-ncov_d)] <- L[2,1,,1:(nL-ncov_d)] <- L[2,2,,1:(nL-ncov_d)] <- rmvnorm(ntot, c(mean_x1, mean_x2, mean_x3, mean_x4, mean_x5), s)
+    ## Determining discrete counterpart of X1,X2
+    Lobs[,(nL-(ncov_d - 1)):nL] <- L[1,1,,(nL-(ncov_d - 1)):nL] <- L[1,2,,(nL-(ncov_d - 1)):nL] <- L[2,1,,(nL-(ncov_d - 1)):nL] <- L[2,2,,(nL-(ncov_d - 1)):nL] <- ifelse(expit(Lobs[,1:ncov_d]) < 0.5, 0, 1)
+    ## Linear predictor of treatment assignment model
+    m_z<- Lobs[,nL-(ncov_d-1)] * coeffz_x1 + Lobs[,nL] * coeffz_x2 + Lobs[,3] * coeffz_x3 + Lobs[,4] * coeffz_x4 + Lobs[,5] * coeffz_x5
+    ## Treatment assignment probability
+    pz <- expit(m_z)
+    ## Observed treatment assignment
+    z[,1] <- rbinom(ntot,1,prob=pz)
+    
+    
+    ### 2. visit 2:
+    # for Z1 = 0;
+    
+    ## Generating continuous X's
+    L[1,1,,(nL+1):(2*nL-ncov_d)] <- L[1,2,,(nL+1):(2*nL-ncov_d)] <- t(apply(L[1,1,,1:(nL-ncov_d)], 1, function(x){rmvnorm(1, mean = x, s)}))
+
+    # for z1 = 1;
+
+    ## Treatment effects on covariates
+    trt<- matrix(c(rep(coeffx1_z,ntot), rep(coeffx2_z,ntot), rep(coeffx3_z,ntot), rep(coeffx4_z,ntot), rep(coeffx5_z,ntot)),ntot,ncov)
+    
+    ## Generating continuous X's
+    L[2,1,,(nL+1):(2*nL-ncov_d)] <- L[2,2,,(nL+1):(2*nL-ncov_d)] <- t(apply( (L[2,1,,1:(nL-ncov_d)]) + trt, 1, function(x){rmvnorm(1, mean = x, s)})) 
+    
+    ## Determining discrete counterpart of X1,X2
+    L[,,,((nL-(ncov_d-1)):nL)] <- ifelse(expit(L[,,,1:ncov_d]) < 0.5, 0, 1)
+    L[,,,(2*nL-(ncov_d-1)):(2*nL)] <- ifelse(expit(L[,,,(nL+1):(nL+ncov_d)]) < 0.5, 0, 1)
+
+    ## Extracting only the observed covariate values (based on observed treatment assignment)
+    for (j in (nL+1):(2*nL)) {
+      Lobs[,j] <- L[cbind(z[,1]+1,1,1:ntot,j)]
+    }
+
+    ## Linear predictor of treatment assignment model
+    m_z<- Lobs[,2*nL-(ncov_d-1)] * coeffz_x1 + Lobs[,2*nL] * coeffz_x2 + Lobs[,3] * coeffz_x3 + Lobs[,4] * coeffz_x4 + Lobs[,5] * coeffz_x5 + coeffz_z*z[,1]
+    ## Treatment assignment probability
+    pz <- expit(m_z)
+    ## Observed treatment assignment
+    z[,2] <- rbinom(ntot,1,prob=pz)
+    
+    
+    # 3. intervention:
+
+    #z1 = 0,z2 = 0
+    L[1,1,,(2*nL+1):(3*nL-ncov_d)] <- t(apply(L[1,1,,(nL+1):(2*nL-ncov_d)], 1, function(x){rmvnorm(1, mean = x, s)}))
+
+    #z1 = 0,z2 = 1
+    L[1,2,,(2*nL+1):(3*nL-ncov_d)] <- t(apply((L[1,2,,(nL+1):(2*nL-ncov_d)] + trt**2), 1, function(x){rmvnorm(1, mean = x, s)}))
+    
+    #z1 = 1,z2 = 0
+    L[2,1,,(2*nL+1):(3*nL-ncov_d)] <- t(apply(L[2,1,,(nL+1):(2*nL-ncov_d)], 1, function(x){rmvnorm(1, mean = x, s)}))
+    
+    #z1 = 1,z2 = 1
+    L[2,2,,(2*nL+1):(3*nL-ncov_d)] <- t(apply((L[2,2,,(nL+1):(2*nL-ncov_d)]) + trt**2 + trt_int, 1, function(x){rmvnorm(1, mean = x, s)}))
+
+    ## Determining discrete counterpart of X1,X2
+    L[,,,((nL-(ncov_d-1)):nL)] <- ifelse(expit(L[,,,1:ncov_d]) < 0.5, 0, 1)
+    L[,,,(2*nL-(ncov_d-1)):(2*nL)] <- ifelse(expit(L[,,,(nL+1):(nL+ncov_d)]) < 0.5, 0, 1)
+    L[,,,(3*nL-(ncov_d-1)):(3*nL)] <- ifelse(expit(L[,,,(2*nL+1):(2*nL+ncov_d)]) < 0.5, 0, 1)
+
+    ## Extracting only the observed covariate values (based on observed treatment assignment)
+    for (j in (2*nL+1):(3*nL)) {
+      Lobs[,j] <- L[cbind(z[,1]+1,z[,2]+1,1:ntot,j)]
+    }
+    
+    ## Cumulative treatments
+    zobs <- rowSums(z)
+    table(zobs)
+    
+    ## Outcomes
+        ylong <- NULL
+        zlong <- NULL
+        counter <- 1
+        for (j in 0:1) {       
+            for (k in 0:1) {
+                    ## Response model linear predictor
+                    lp <- alpha + effect*j + (effect**2)*k + effect_int*j*k + L[j+1,k+1,,(2*nL+1+ncov_d):(3*nL)] %*% coeffx_y    ## Should these covariates be used?
+                    if(any(is.na(lp))){
+                      L_na <- L[j+1,k+1,,(2*nL+1+ncov_d):(3*nL)] 
+                      lp_na <- lp
+                      print(j)
+                      print(k)
+                    }
+                    ## Applying link function (identity link) to get response values
+                    y[j+1,k+1,] <- lp
+                    
+                    ## Changing response values to long format
+                    ylong <- c(ylong, y[cbind(j+1,k+1,1:ntot)])
+                    ## Changing treatment values to long format
+                    zlong <- c(zlong, rep(j+k, ntot))
+                }
+        }
+        
+      ## Extracting observed response values
+      yobs <- y[cbind(z[,1]+1,z[,2]+1,1:ntot)]
+      summary(yobs)
+      
+      ## Potential treatment values for visits 1 and 2, respectively, in long format
+      z1long <- c(rep(0, ntot*2), rep(1, ntot*2))
+      z2long <- c(rep(0, ntot), rep(1, ntot), rep(0, ntot), rep(1, ntot))
+      
+      ## True Model
+      truemodel <- lm(ylong ~ z1long*z2long) #in analysis, can investigate an incorrect likelihood where z1 and z2 have same effect
+      summary(truemodel)
+      
+      ## True model results
+      results[i,1] <- coef(truemodel)[2] ## had error with i so subtracted 1
+      results[i,2] <- vcov(truemodel)[2,2] ## had error with i so subtracted 1
+
+ 
+      ## Naive model - only includes observed values of Y and Z.
+        # yobs <- yobs[1:nobs]
+        # z <- z[1:nobs,]
+        # zobs <- zobs[1:nobs]
+        
+        # x <- x[,,1:nobs,]
+        # Lobs <- Lobs[1:nobs,]
+        naivemodel <- lm(yobs ~ z[,1]*z[,2]) ## TO CHANGE: zobs is not by visit. Affecting lobs variable below too
+        results[i-1,3] <- coef(naivemodel)[2]
+        results[i-1,4] <- vcov(naivemodel)[2,2]
+        adjmodel <- lm(yobs ~ z[,1]*z[,2] + Lobs[,(2*nL+2):(3*nL)])
+
+        
+    #creating observed wide datasets;
+    obs<-data.frame(Lobs,z, z[,1], rowSums(z[,1:2]),rep(1,ntot),rep(2,ntot),rep(3,ntot))
+    colnames(obs) <- c(paste0("x1", 1:ncov), paste0("x1", 1:ncov_d, "d"), paste0("x2", 1:ncov), paste0("x2", 1:ncov_d, "d"), paste0("x3", 1:ncov), paste0("x3", 1:ncov_d, "d"),"z1", "z2","cumz1","cumz2", "visit1","visit2","visit3")
+    obs$id<-seq(1, ntot, by=1)
+    #Creating observed long datasets to model weighted GEE;
+    lobs<-rbind( cbind(seq(1, ntot, by=1),Lobs[,1:nL],z[,1]),cbind(seq(1, ntot, by=1), Lobs[,(nL+1):(2*nL)],z[,2]),cbind(seq(1, ntot, by=1), Lobs[,(2*nL+1):(3*nL)], NA))
+    time<-c(rep(1, ntot), rep(2, ntot), rep(3,ntot))
+    lcumz<-c(rep(0,ntot), z[,1], rowSums(z[,1:2]))
+    obslong<-data.frame(lobs, time, lcumz)
+    colnames(obslong)<-c("id", "x1", "x2", "x3", "x4", "x5", "x1d", "x2d", "z","time", "lcumz")
+    yobs_df <- data.frame(id = 1:ntot, y = yobs)
+    obslong <- obslong %>% left_join(yobs_df, by = "id")
+    obslong$y <- with(obslong, ifelse(time < 3, NA, y))
+    # head(obslong)
+    # dim(obslong) #1500 rows, 6 cols
+    obslong <- obslong[order(obslong$id),] 
+    
+    #coding true effect by generating potential outcomes long dataset;
+    lobs_t1<-cbind(seq(1, ntot, by=1),L[1,1,,1:nL], rep(0,ntot), rep(1,ntot)) #lcumz = 0;
+    lobs_t2_1<-cbind(seq(1,ntot,by = 1), L[1,1,,(nL+1):(2*nL)], rep(0,ntot), rep(2, ntot)) #z1=0, lcumz=0;
+    lobs_t2_2<-cbind(seq(1,ntot,by = 1), L[2,1,,(nL+1):(2*nL)], rep(1,ntot), rep(2, ntot)) #z1=1, lcumz = 1;
+    lobs_t3_1<-cbind(seq(1,ntot,by = 1), L[1,1,,(2*nL+1):(3*nL)], rep(0,ntot), rep(3, ntot)) #z1=0, z2 = 0, lcumz=0;
+    lobs_t3_2<-cbind(seq(1,ntot,by = 1), L[1,2,,(2*nL+1):(3*nL)], rep(1,ntot), rep(3, ntot)) #z1=0, z2 = 1, lcumz = 1;
+    lobs_t3_3<-cbind(seq(1,ntot,by = 1), L[2,1,,(2*nL+1):(3*nL)], rep(1,ntot), rep(3, ntot)) #z1=1, z2 = 0, lcumz = 1;
+    lobs_t3_4<-cbind(seq(1,ntot,by = 1), L[2,2,,(2*nL+1):(3*nL)], rep(2,ntot), rep(3, ntot)) #z1=1, z2 = 1, lcumz=2;
+    truelong<-data.frame(rbind(lobs_t1,lobs_t2_1, lobs_t2_2, lobs_t3_1, lobs_t3_2, lobs_t3_3, lobs_t3_4))
+    # colnames(truelong)<-c("id", "x1", "x2", "x1d", "lcumz", "time")
+    colnames(truelong) <- c("id", "x1", "x2", "x3", "x4", "x5", "x1d", "x2d", "lcumz","time")
+    head(truelong)
+    dim(truelong) 
+    truelong <- truelong[order(truelong$id),]
+    y_vector <- matrix(rep(0, ntot*4), ntot, 4)
+    for(j in 1:ntot){
+      y_vector[j,] <- y[,,j] %>% as.vector()
+    }
+    colnames(y_vector) <- c("y00", "y10", "y01", "y11")
+    
+     
+    
+```
+
+## Stan modelling
+```{r, echo = FALSE}
+stan_data <- list(N = nrow(Lobs),
+                       N_cov = ncov,
+                       x1 = Lobs[,(ncov_d+1):(ncov_d+ncov)],
+                       x2 = Lobs[,(ncov+2*ncov_d+1):(2*ncov+2*ncov_d)],
+                       z1 = z[,1],
+                       z2 = z[,2],
+                       z1_s = z[,1],
+                       z2_s = z[,2])
+
+```
+
+```{r, include = FALSE}
+mod <- stan(data = stan_data,
+             file = ("JAGS model in stan.stan"),
+             iter = 6000,
+             seed = 243)
+summary(mod)[["summary"]]
+print("done")
+
+```
+
+```{r, echo = FALSE}
+mod_weight_numerator <- rstan::extract(mod)[[c("weight_numerator")]] %>% as.data.frame()
+
+mod_weight_denominator <- rstan::extract(mod)[[c("weight_denominator")]] %>% as.data.frame()
+
+weights_ratio <- colSums(mod_weight_numerator)/colSums(mod_weight_denominator)
+print(1)
+
+# wmean_s <- c(rep(1, ntot), weights_ratio)
+wmean_s <- c(weights_ratio)
+
+```
+
+```{r, echo = FALSE}
+# library(bayesplot)
+# 
+# set.seed(1856)
+# z1 <- z[,1]
+# z2 <- z[,2]
+# z1rep1 <- rstan::extract(mod)[["z1_pred"]]
+# z2rep1 <- rstan::extract(mod)[["z2_pred"]]
+# ppc_dens_overlay(z1, z1rep1) 
+# 
+# mod_extract <- rstan::extract(mod)
+# samp100 <- sample(nrow(yrep1), 100)
+```
+
+```{r, echo = FALSE}
+## Gelman-Reuben index
+## correlation plot - should not be correlated
+# pars <- c("beta1")
+# traceplot(mod, pars = pars)
+
+## mcmc_pairs
+##autorun jags (runs chain until convergence)
+library(bayesplot)
+library(rstanarm)
+mod_summary <- summary(mod)
+pairs(mod, pars = c("alpha1", "beta1"))
+
+```
+
+```{r, echo = FALSE}
+    trueGEE<-geese(truelong$y~truelong$lcumz+truelong$time, id = truelong$id, data = truelong, family = gaussian, corstr = "ar1")
+    summary(trueGEE) 
+    results[i,1] <- coef(trueGEE)[2]
+    results[i,2] <- trueGEE$vbeta[2,2]
+    
+    ## End
+    
+    ## End of Study Outcome
+    ## Widen such that each row is a patient. In wide form, previous y's y1 and y2 should be covariates because they're confounders
+    ### Wide df: 6 columns for the two covariates x 3 visits, and 2 columns for treatments x2 visits and 1 column for cumz (z1 +), 3 columns for y (y1, y2, y).
+    ### lm(y ~ cumz)
+    truelong_endofstudy <- truelong %>% filter(time == 3)
+    trueGEE_endofstudy <- geese(truelong$y~truelong$lcumz, id = truelong$id, data = truelong, family = gaussian, corstr = "ar1")
+    coef(trueGEE_endofstudy)
+    truelong_endofstudy %>% group_by(id)
+    mean(coef(lm(y~lcumz+as.factor(id), data = truelong_endofstudy))[2:500])
+    lm(data = truelong_endofstudy %>% group_by(id, lcumz) %>% summarise(y = mean(y)))
+    # E(y11) - E(y00) this is saying E(Y01) is not the same as E(Y10)
+    # lm(Y_endofstudy ~ cumz), cumz will be a ordinal variable 0,1,2
+    
+    # trueGEE2<-geese(truelong$y~truelong$lcumz+truelong$time, id = truelong$id, data = truelong, family = gaussian,corstr = "independence")
+    # # summary(trueGEE2)
+    # results[i,3] <- coef(trueGEE2)[2]
+    # results[i,4] <- trueGEE2$vbeta[2,2]
+    
+    
+    #unweighted GEE biased - naive approach;
+    # "independence", "exchangeable", "ar1","unstructured" and "userdefined";
+    # simpleGEE2<-geese(obslong$y~obslong$lcumz+obslong$time, id = obslong$id, data = obslong, family = gaussian, corstr = "ar1")
+    # # summary(simpleGEE)
+    # results[i,1] <- coef(simpleGEE2)[2]
+    # results[i,2] <- simpleGEE2$vbeta[2,2]
+    
+    bootest3<-numeric(nboot)
+
+    for (j8 in 1:nboot) {
+      alpha <- as.numeric(rdirichlet(1, rep(1.0, ntot)))
+       inits2 <- c(30,5,0.2,4,6)
+      ## y_end ~ normal distribution with mean and sigma_squared. Mean is modelled by theta0+theta1*z1+theta2*z2 (if there's interaction, then add theta3*z1*z2). sigma has to be > 0. 0 for theta's and 1 for sigma as initial points. need design matrix
+      maxim <- optim(inits2, fn=loglik2,resp=yobs, mmat=cbind(1, z[,1], z[,2], z[,1] * z[,2]), 
+                     # mmat2=cbind(1,obs$cumz2,2),mmat3=cbind(1,obs$cumz3,3),
+                     weight=alpha*wmean_s,
+                     # control=list(fnscale=-1), method='BFGS', hessian=F)
+                     control=list(fnscale=-1), method = "Nelder-Mead", hessian=F)
+      bootest3[j8] <- maxim$par[2]
+
+      loglik2(inits2, yobs, cbind(1, z[,1], z[,2], z[,1] * z[,2]), alpha*wmean_s)
+      if (j8 %% 50 == 0) {
+        print(j8)
+      }
+    }
+    
+
+  }
+  
+}
+
+```
+## To-Do
+
+Get True ATE using the trueGEE code
+Shorten to 2 visits (once g-computation matches with true model, can extend to 3 visits)
+Compare true value to BMSM
+Work on implementing TMLE
+
+## G-Computation
+### Dataset should be long: each row is a unique id-visit combination
+### y is NA when visit isn't 2
+### y in example code is binary
+### what are w1, w2?
+```{r, echo = FALSE}
+colnames(dat1_new)
+obslong_new <- obslong %>% select(id, x1d, x2d, x3, x4, x5, time, z, y)
+obslong_new$visit <- obslong_new$time
+obslong_new$time <- obslong_new$visit - 1
+
+    id <- 'id'
+    time_name <- 'time'
+    # create one to for the package
+    covnames <- c("x1d", "x2d", "x3", "x4", "x5", "z")
+    outcome_name <- 'y'
+    covtypes <- c('binary', 'binary', 'normal', 'normal', 'normal', 'binary')
+    histories <- c(lagged) ## Not sure what this is doing
+    histvars <- list(c('z', "x1d", "x2d", "x3", "x4", "x5"))
+    
+    covparams <- list(covmodels = c(x1d ~ lag1_x1d + lag1_z,
+                                    x2d ~ lag1_x2d + lag1_z,
+                                    x3 ~ lag1_x3 + lag1_z,
+                                    x4 ~ lag1_x4 + lag1_z,
+                                    x5 ~ lag1_x5 + lag1_z,
+                                    z ~ lag1_x1d + x1d + lag1_x2d + x2d + lag1_x3 + x3 + lag1_x4 + x4 + lag1_x5 + x5 + lag1_z))
+    
+    ymodel <- y ~ lag1_z + lag2_z + lag1_z*lag2_z + lag1_x1d + x1d + lag1_x2d + x2d + lag1_x3 + x3 + lag1_x4 + x4 + lag1_x5 + x5
+    
+    intvars <- list('z', 'z')
+    interventions <- list(list(c(static, rep(0, 3))),
+                          list(c(static, rep(1, 3))))
+    int_descript <- c('Never treat', 'Always treat')
+    
+    gform_cont_eof2 <- gformula_continuous_eof(
+      obs_data = obslong_new,
+      id = id,
+      time_name = time_name,
+      covnames =covnames,
+      outcome_name = outcome_name, 
+      covtypes = covtypes,
+      covparams = covparams,  ymodel = ymodel,
+      intvars = intvars, interventions = interventions,
+      int_descript = int_descript, 
+      ref_int = 1,
+      histories = c(lagged), histvars = histvars,
+      # basecovs = c("w1","w2"), 
+      # boot_diag = TRUE,
+      nsimul = 100,
+      nsamples = 1000, parallel = TRUE, ncores = 4,
+      seed = 123)
+    gform_cont_eof2
+```
+
+
+
