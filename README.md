@@ -1,4 +1,4 @@
-# Causal Inference Software Review Summary
+# Causal analysis with longitudinal data and time-dependent exposure using R: A package review
 
 - **Traced the evolution** of causal inference from Wright's path diagrams in 1920 to the introduction of robust methods like TMLE by Van Der Laan and Rubin in 2006.
 - **Assessed R packages** gfoRmula, ltmle, and Weightit, each implementing G-computation, TMLE, and MSM, for causal effect estimation.
