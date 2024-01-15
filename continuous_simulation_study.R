@@ -70,40 +70,46 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
      for (i in 1:N) {
 
      # conditional treatment assignment model, v2;
-     z2[i] ~ dbern(p2[i])
-     logit(p2[i]) <- b20 + b21*x2[i] + b22*y2[i] + b23*z1[i]
+     a_2[i] ~ dbern(p2c[i])
+     logit(p2c[i]) <- b20 + b21*w1[i]+ b22*w2[i] + b23*L1_1[i] + b24*L2_1[i] + b25*L1_2[i] + b26*L2_2[i] + b27*a_1[i]
 
      # marginal treatment assignment model, v2;
-     z2s[i] ~ dbern(p2s[i])
-     logit(p2s[i]) <- bs20 + bs21*z1[i]
+     a_2m[i] ~ dbern(p2m[i])
+     logit(p2m[i]) <- bm20 + bm21*a_1[i]
 
      # conditional treatment assignment model, v1;
-     z1[i] ~ dbern(p1[i])
-     logit(p1[i]) <- b10 + b11*x1[i] + b12*y1[i]
+     a_1[i] ~ dbern(p1c[i])
+     logit(p1c[i]) <- b10 + b11*w1[i]+ b12*w2[i] + b13*L1_1[i] + b14*L2_1[i]
 
      # marginal treatment assignment model, v1;
-     z1s[i] ~ dbern(p1s[i])
-     logit(p1s[i]) <- bs10
+     a_1m[i] ~ dbern(p1m[i])
+     logit(p1m[i]) <- bm10
 
      }
 
      # Priors
-     b10 ~ dunif(-10,10) #true 0;
-     b11 ~ dunif(-10,10) #true 0.2;
-     b12 ~ dunif(-10,10) #true -0.05;
-
-     b20 ~ dunif(-10,10)
-     b21 ~ dunif(-10,10)
-     b22 ~ dunif(-10,10)
-     b23 ~ dunif(-10,10) #true 2
-
-     bs10 ~ dunif(-10,10)
-     bs20 ~ dunif(-10,10)
-     bs21 ~ dunif(-10,10)
+     b10 ~ dnorm(0,10) 
+     b11 ~ dnorm(0,5) 
+     b12 ~ dnorm(0,5) 
+     b13 ~ dnorm(0,5) 
+     b14 ~ dnorm(0,5) 
+     
+     b20 ~ dnorm(0,10)
+     b21 ~ dnorm(0,5)
+     b22 ~ dnorm(0,5)
+     b23 ~ dnorm(0,5) 
+     b24 ~ dnorm(0,5)
+     b25 ~ dnorm(0,5)
+     b26 ~ dnorm(0,5) 
+     b27 ~ dnorm(0,5) 
+      
+     bm10 ~ dnorm(0,10)
+     bm20 ~ dnorm(0,10)
+     bm21 ~ dnorm(0,5)
 
 
      }",
-       file = "model_unif3.txt")
+       file = "model_norm.txt")
   
   ###### BMSM ######
   
@@ -144,12 +150,14 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
     library(geepack)
     library(MuMIn)
     library(R2jags)
+    library(coda) #new package;
     library(runjags)
     
   # true value;
   # each method and each setting, est, se(est), low 95%CI, upper 95%CI;
     
   # data generation;
+  # i=1
   set.seed(i+1234)
   
   results.it <- matrix(NA, 1, 21)
@@ -317,59 +325,67 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
   
   # Bayesian inference 1. BMSM
   # first obtain MCMC sample for weights! from posterier distribution of treatment assignment parameters;
-  jags.data<-list(x1= a_1, z1=L1_1,  z2=L2_1, x2=a_2, z1s = L1_2 , z2s=L2_2, y=y, N = ntot)
-  jags.params<-c("b10","b11","b12","b20","b21", "b22","b23",
-                 "bs10","bs20","bs21")
+  jags.data<-list(w1=w1, w2=w2, a_1= a_1, a_1m= a_1, L1_1=L1_1,  L2_1=L2_1, 
+                                a_2=a_2, a_2m=a_2, L1_2 = L1_2 , L2_2=L2_2, N = ntot)
+  jags.params<-c("b10","b11","b12","b13","b14",
+                 "b20","b21", "b22","b23","b24", "b25","b26","b27",
+                 "bm10","bm20","bm21")
   
   jags.inits<-function(){list(b10=0.1,
                               b11=0.1,
                               b12=0.1,
+                              b13=0.1,
+                              b14=0.1,
                               b20=0.1,
                               b21=0.1,
                               b22=0.1,
                               b23 = 0.1,
-                              bs10 = 0.1,
-                              bs20 = 0.1,
-                              bs21 = 0.1)}
+                              b24=0.1,
+                              b25=0.1,
+                              b26 = 0.1,
+                              b27 = 0.1,
+                              bm10 = 0.1,
+                              bm20 = 0.1,
+                              bm21 = 0.1)}
   
-  jagsfit<- jags(data = list(x1= obs$x1,
-                             y1=obs$y1,
-                             z1=obs$z1,
-                             x2=obs$x2,
-                             y2=obs$y2,
-                             z2=obs$z2,
-                             z1s = obs$z1 ,
-                             z2s=obs$z2,
-                             N = ntot),
+  jagsfit<- jags(data = jags.data,
                  inits = jags.inits,
                  jags.params,
-                 n.iter = 10000,
-                 model.file = "model_unif3.txt",
+                 n.iter = 12000,
+                 model.file = "model_norm.txt",
                  n.chains = 1,
-                 n.burnin = 5000,
-                 n.thin = 5)
+                 n.burnin = 8000,
+                 n.thin = 4)
   
   # or to use some plots in coda
   # use as.mcmmc to convert rjags object into mcmc.list
   jags.mcmc <- as.mcmc(jagsfit)
   out.mcmc <- as.matrix(jags.mcmc[[1]])
   
-  samplesize = 1000
-  ntot = 500
-  obs_prob1<-matrix(NA, samplesize, ntot)
-  exp_prob1<-matrix(NA, samplesize, ntot)
-  obs_prob2<-matrix(NA, samplesize, ntot)
-  exp_prob2<-matrix(NA, samplesize, ntot)
+  # geweke.diag(out.mcmc)
+  
+  # pdraws = (n.iter-n.burnin)/n.thin
+  pdraws = 1000
+  # ntot = 500
+  obs_prob1<-matrix(NA, pdraws, ntot)
+  exp_prob1<-matrix(NA, pdraws, ntot)
+  obs_prob2<-matrix(NA, pdraws, ntot)
+  exp_prob2<-matrix(NA, pdraws, ntot)
   
   #calulating the MCMC weights;
-  for (i2 in 1:(samplesize)){
+  for (i2 in 1:(pdraws)){
     for (j2 in 1:(ntot)){
       
-      exp_prob1[i2,j2] <- (exp(z[j2,1]*out.mcmc[i2,8]))/(1.0+exp(out.mcmc[i2,8]))
-      exp_prob2[i2,j2] <- exp_prob1[i2,j2]*(exp(z[j2,2]*(out.mcmc[i2,9]+out.mcmc[i2,10]*z[j2,1])))/(1.0+exp(out.mcmc[i2,9]+out.mcmc[i2,10]*z[j2,1]))
+      p1m[i2,j2] <- expit(out.mcmc[j2,"bm10"])
+      p1c[i2,j2]<-
+        
+      p2m[i2,j2] <- expit(out.mcmc[j2,"bm20"]+a_1[j2]*out.mcmc[j2,"bm21"])
+      p3c[i2,j2]<-
+      # exp_prob1[i2,j2] <- (exp(a_1[j2,1]*out.mcmc[i2,8]))/(1.0+exp(out.mcmc[i2,8]))
+      # exp_prob2[i2,j2] <- exp_prob1[i2,j2]*(exp(z[j2,2]*(out.mcmc[i2,9]+out.mcmc[i2,10]*z[j2,1])))/(1.0+exp(out.mcmc[i2,9]+out.mcmc[i2,10]*z[j2,1]))
       
-      obs_prob1[i2,j2] <- (exp(z[j2,1]*(out.mcmc[i2,1] + out.mcmc[i2,2]*Lobs[j2,1]+out.mcmc[i2,3]*Lobs[j2,2])))/(1.0+exp(out.mcmc[i2,1] + out.mcmc[i2,2]*Lobs[j2,1]+out.mcmc[i2,3]*Lobs[j2,2]))
-      obs_prob2[i2,j2] <- obs_prob1[i2,j2]*(exp(z[j2,2]*(out.mcmc[i2,4]+out.mcmc[i2,5]*Lobs[j2,3]+out.mcmc[i2,6]*Lobs[j2,4]+out.mcmc[i2,7]*z[j2,1])))/(1.0+exp(out.mcmc[i2,4]+out.mcmc[i2,5]*Lobs[j2,3]+out.mcmc[i2,6]*Lobs[j2,4]+out.mcmc[i2,7]*z[j2,1]))
+      # obs_prob1[i2,j2] <- (exp(z[j2,1]*(out.mcmc[i2,1] + out.mcmc[i2,2]*Lobs[j2,1]+out.mcmc[i2,3]*Lobs[j2,2])))/(1.0+exp(out.mcmc[i2,1] + out.mcmc[i2,2]*Lobs[j2,1]+out.mcmc[i2,3]*Lobs[j2,2]))
+      # obs_prob2[i2,j2] <- obs_prob1[i2,j2]*(exp(z[j2,2]*(out.mcmc[i2,4]+out.mcmc[i2,5]*Lobs[j2,3]+out.mcmc[i2,6]*Lobs[j2,4]+out.mcmc[i2,7]*z[j2,1])))/(1.0+exp(out.mcmc[i2,4]+out.mcmc[i2,5]*Lobs[j2,3]+out.mcmc[i2,6]*Lobs[j2,4]+out.mcmc[i2,7]*z[j2,1]))
       
     }
     
@@ -380,7 +396,7 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
   
   wmean2_s <- colSums(exp_prob1)/colSums(obs_prob1)
   wmean3_s <- colSums(exp_prob2)/colSums(obs_prob2)
-  wmean_s<-cbind(rep(1,ntot),wmean2_s, wmean3_s)
+  # wmean_s<-cbind(rep(1,ntot),wmean2_s, wmean3_s)
   
   #Multinomial sampling - unweighted error variance:
   
