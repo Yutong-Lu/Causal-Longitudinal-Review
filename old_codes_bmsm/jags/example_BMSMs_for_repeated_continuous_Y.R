@@ -1,5 +1,6 @@
 rm(list=ls())
-setwd("C:/Users/kuan liu/Dropbox (UT_KLiu)/thesis-simulation/paper1/")
+# setwd("C:/Users/kuan liu/Dropbox (UT_KLiu)/thesis-simulation/paper1/")
+setwd("/Users/lorrainelu/Documents/GitHub/Casual-Longitudinal-Review/old_codes_bmsm/jags")
 library(mvtnorm)
 library(nnet)
 library(MCMCpack)

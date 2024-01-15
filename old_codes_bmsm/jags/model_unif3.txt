@@ -1,0 +1,39 @@
+ model {
+
+     #N = nobs
+     for (i in 1:N) {
+
+     # conditional treatment assignment model, v2;
+     z2[i] ~ dbern(p2[i])
+     logit(p2[i]) <- b20 + b21*x2[i] + b22*y2[i] + b23*z1[i]
+
+     # marginal treatment assignment model, v2;
+     z2s[i] ~ dbern(p2s[i])
+     logit(p2s[i]) <- bs20 + bs21*z1[i]
+
+     # conditional treatment assignment model, v1;
+     z1[i] ~ dbern(p1[i])
+     logit(p1[i]) <- b10 + b11*x1[i] + b12*y1[i]
+
+     # marginal treatment assignment model, v1;
+     z1s[i] ~ dbern(p1s[i])
+     logit(p1s[i]) <- bs10
+
+     }
+
+     # Priors
+     b10 ~ dunif(-10,10) #true 0;
+     b11 ~ dunif(-10,10) #true 0.2;
+     b12 ~ dunif(-10,10) #true -0.05;
+
+     b20 ~ dunif(-10,10)
+     b21 ~ dunif(-10,10)
+     b22 ~ dunif(-10,10)
+     b23 ~ dunif(-10,10) #true 2
+
+     bs10 ~ dunif(-10,10)
+     bs20 ~ dunif(-10,10)
+     bs21 ~ dunif(-10,10)
+
+
+     }

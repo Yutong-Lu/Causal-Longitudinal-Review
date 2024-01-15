@@ -1,7 +1,7 @@
 ###
 #
 ###
-setwd("/Users/lorrainelu/Documents/GitHub/longitudinal_causal_analysis")
+setwd("/Users/lorrainelu/Documents/GitHub/Casual-Longitudinal-Review")
 .libPaths(c(.libPaths(),"/Users/lorrainelu/Library/R/x86_64/4.1/library"))
 
 options(warn=-1)
