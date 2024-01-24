@@ -377,10 +377,14 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
     for (j2 in 1:(ntot)){
       
       p1m[i2,j2] <- expit(out.mcmc[j2,"bm10"])
-      p1c[i2,j2]<-
+      p1c[i2,j2]<- expit(out.mcmc[j2,"bm10"] + out.mcmc[j2,"b11"]*w1[j2] + 
+                           out.mcmc[j2,"b12"]*w1[j2] + out.mcmc[j2,"b13"]*L1_1[j2] + out.mcmc[j2,"b14"]*L2_1[j2])
         
-      p2m[i2,j2] <- expit(out.mcmc[j2,"bm20"]+a_1[j2]*out.mcmc[j2,"bm21"])
-      p3c[i2,j2]<-
+      p2m[i2,j2] <- expit(out.mcmc[j2,"bm20"]+out.mcmc[j2,"bm21"]*a_1[j2])
+      p2c[i2,j2] <- expit(out.mcmc[j2,"b20"]+out.mcmc[j2,"b21"]*w1[j2]+out.mcmc[j2,"b22"]*w2[j2]+
+                            out.mcmc[j2,"b23"]*L1_1[j2]+out.mcmc[j2,"b24"]*L2_1[j2]+out.mcmc[j2,"b25"]*L1_2[j2]+
+                            out.mcmc[j2,"b26"]*L2_2[j2]+out.mcmc[j2,"b27"]*a_1[j2])
+      
       # exp_prob1[i2,j2] <- (exp(a_1[j2,1]*out.mcmc[i2,8]))/(1.0+exp(out.mcmc[i2,8]))
       # exp_prob2[i2,j2] <- exp_prob1[i2,j2]*(exp(z[j2,2]*(out.mcmc[i2,9]+out.mcmc[i2,10]*z[j2,1])))/(1.0+exp(out.mcmc[i2,9]+out.mcmc[i2,10]*z[j2,1]))
       
