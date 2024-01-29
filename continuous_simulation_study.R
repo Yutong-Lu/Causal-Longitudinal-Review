@@ -325,7 +325,7 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
   
   # Bayesian inference 1. BMSM
   # first obtain MCMC sample for weights! from posterier distribution of treatment assignment parameters;
-  jags.data<-list(w1=w1, w2=w2, a_1= a_1, a_1m= a_1, L1_1=L1_1,  L2_1=L2_1, 
+  jags.data<-list(w1=w1, w2=w2, a_1=a_1, a_1m= a_1, L1_1=L1_1,  L2_1=L2_1, 
                                 a_2=a_2, a_2m=a_2, L1_2 = L1_2 , L2_2=L2_2, N = ntot)
   jags.params<-c("b10","b11","b12","b13","b14",
                  "b20","b21", "b22","b23","b24", "b25","b26","b27",
@@ -384,6 +384,29 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
       p2c[i2,j2] <- expit(out.mcmc[j2,"b20"]+out.mcmc[j2,"b21"]*w1[j2]+out.mcmc[j2,"b22"]*w2[j2]+
                             out.mcmc[j2,"b23"]*L1_1[j2]+out.mcmc[j2,"b24"]*L2_1[j2]+out.mcmc[j2,"b25"]*L1_2[j2]+
                             out.mcmc[j2,"b26"]*L2_2[j2]+out.mcmc[j2,"b27"]*a_1[j2])
+      
+      # # conditional treatment assignment model, v2;
+      # a_2[i] ~ dbern(p2c[i])
+      # logit(p2c[i]) <- b20 + b21*w1[i]+ b22*w2[i] + b23*L1_1[i] + b24*L2_1[i] + b25*L1_2[i] + b26*L2_2[i] + b27*a_1[i]
+      # 
+      # # marginal treatment assignment model, v2;
+      # a_2m[i] ~ dbern(p2m[i])
+      # logit(p2m[i]) <- bm20 + bm21*a_1[i]
+      # 
+      # # conditional treatment assignment model, v1;
+      # a_1[i] ~ dbern(p1c[i])
+      # logit(p1c[i]) <- b10 + b11*w1[i]+ b12*w2[i] + b13*L1_1[i] + b14*L2_1[i]
+      # 
+      # # marginal treatment assignment model, v1;
+      # a_1m[i] ~ dbern(p1m[i])
+      # logit(p1m[i]) <- bm10
+      
+      
+      
+      
+      
+      
+      
       
       # exp_prob1[i2,j2] <- (exp(a_1[j2,1]*out.mcmc[i2,8]))/(1.0+exp(out.mcmc[i2,8]))
       # exp_prob2[i2,j2] <- exp_prob1[i2,j2]*(exp(z[j2,2]*(out.mcmc[i2,9]+out.mcmc[i2,10]*z[j2,1])))/(1.0+exp(out.mcmc[i2,9]+out.mcmc[i2,10]*z[j2,1]))
