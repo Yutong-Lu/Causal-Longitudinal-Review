@@ -149,6 +149,7 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
     library(lme4)
     library(geepack)
     library(MuMIn)
+    library(MCMCpack)
     library(R2jags)
     library(coda) #new package;
     library(runjags)
@@ -321,8 +322,6 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
   
   # JAGS
   
-  # what are the parameters in my case??
-  
   # Bayesian inference 1. BMSM
   # first obtain MCMC sample for weights! from posterier distribution of treatment assignment parameters;
   jags.data<-list(w1=w1, w2=w2, a_1=a_1, a_1m= a_1, L1_1=L1_1,  L2_1=L2_1, 
@@ -367,17 +366,17 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
   # pdraws = (n.iter-n.burnin)/n.thin
   pdraws = 1000
   # ntot = 500
-  obs_prob1<-matrix(NA, pdraws, ntot)
-  exp_prob1<-matrix(NA, pdraws, ntot)
-  obs_prob2<-matrix(NA, pdraws, ntot)
-  exp_prob2<-matrix(NA, pdraws, ntot)
+  p1m<-matrix(NA, pdraws, ntot)
+  p1c<-matrix(NA, pdraws, ntot)
+  p2m<-matrix(NA, pdraws, ntot)
+  p2c<-matrix(NA, pdraws, ntot)
   
   #calulating the MCMC weights;
   for (i2 in 1:(pdraws)){
     for (j2 in 1:(ntot)){
       
       p1m[i2,j2] <- expit(out.mcmc[j2,"bm10"])
-      p1c[i2,j2]<- expit(out.mcmc[j2,"bm10"] + out.mcmc[j2,"b11"]*w1[j2] + 
+      p1c[i2,j2]<- expit(out.mcmc[j2,"b10"] + out.mcmc[j2,"b11"]*w1[j2] + 
                            out.mcmc[j2,"b12"]*w1[j2] + out.mcmc[j2,"b13"]*L1_1[j2] + out.mcmc[j2,"b14"]*L2_1[j2])
         
       p2m[i2,j2] <- expit(out.mcmc[j2,"bm20"]+out.mcmc[j2,"bm21"]*a_1[j2])
@@ -402,12 +401,6 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
       # logit(p1m[i]) <- bm10
       
       
-      
-      
-      
-      
-      
-      
       # exp_prob1[i2,j2] <- (exp(a_1[j2,1]*out.mcmc[i2,8]))/(1.0+exp(out.mcmc[i2,8]))
       # exp_prob2[i2,j2] <- exp_prob1[i2,j2]*(exp(z[j2,2]*(out.mcmc[i2,9]+out.mcmc[i2,10]*z[j2,1])))/(1.0+exp(out.mcmc[i2,9]+out.mcmc[i2,10]*z[j2,1]))
       
@@ -421,9 +414,7 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
     # }
   }
   
-  wmean2_s <- colSums(exp_prob1)/colSums(obs_prob1)
-  wmean3_s <- colSums(exp_prob2)/colSums(obs_prob2)
-  # wmean_s<-cbind(rep(1,ntot),wmean2_s, wmean3_s)
+  wmean <- colSums(p2m)/colSums(p2c)
   
   # we require wide format data, requiring 1 patient per row;
   wloglik_normal<-function(param,
@@ -449,11 +440,11 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
   bootest<-numeric(nboot)
   
   for (j in 1:nboot) {
-    alpha <- as.numeric(rdirichlet(1, rep(1.0, length(testdata$y))))
+    alpha <- as.numeric(rdirichlet(1, rep(1.0, length(dat1$y))))
     maxim <- optim(inits1,
                    fn=wloglik_normal,
-                   Y=testdata$y,
-                   A=cbind(1,testdata$a_1, testdata$a_2, testdata$a_1*testdata$a_2), #three mean parameters (intercept + coefficient for a_1 and coefficient for a_2);
+                   Y=dat1$y,
+                   A=cbind(1,dat1$a_1, dat1$a_2, dat1$a_1*dat1$a_2), #three mean parameters (intercept + coefficient for a_1 and coefficient for a_2);
                    weight=alpha*wmean,
                    control=list(fnscale=-1), method='BFGS', hessian=F)
     bootest[j] <- maxim$par[2]+maxim$par[3]+maxim$par[4] #difference on the mean of Y between always treated and never treated;
