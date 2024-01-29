@@ -1,0 +1,46 @@
+ model {
+
+     #N = nobs
+     for (i in 1:N) {
+
+     # conditional treatment assignment model, visit 2;
+     a2[i] ~ dbern(p2[i])
+     logit(p2[i]) <- b20 + b21*w1[i] + b22*w2[i] + b23*L11[i] + b24*L21[i] + b25*a1[i] + b26*L12[i] + b27*L22[i]
+
+     # conditional treatment assignment model,visit 1;
+     a1[i] ~ dbern(p1[i])
+     logit(p1[i]) <- b10 + b11*w1[i] + b12*w2[i] + b13*L11[i] + b14*L21[i]
+
+     # marginal treatment assignment model, visit 2;
+     a2s[i] ~ dbern(p2s[i])
+     logit(p2s[i]) <- bs20 + bs21*a1s[i]
+
+     # marginal treatment assignment model, visit 1;
+     a1s[i] ~ dbern(p1s[i])
+     logit(p1s[i]) <- bs10
+
+     }
+     
+     mp1s <- mean(p1s[])
+
+     # Priors
+     bs10 ~ dnorm(0,10) #intercept;
+     bs20 ~ dnorm(0,10) #intercept;
+     bs21 ~ dnorm(0,5) #OR;
+
+     b10 ~ dnorm(0,10)
+     b11 ~ dnorm(0,5)
+     b12 ~ dnorm(0,5)
+     b13 ~ dnorm(0,5)
+     b14 ~ dnorm(0,5)
+
+     b20 ~ dnorm(0,10)
+     b21 ~ dnorm(0,5)
+     b22 ~ dnorm(0,5)
+     b23 ~ dnorm(0,5)
+     b24 ~ dnorm(0,5)
+     b25 ~ dnorm(0,5)
+     b26 ~ dnorm(0,5)
+     b27 ~ dnorm(0,5)
+
+     }

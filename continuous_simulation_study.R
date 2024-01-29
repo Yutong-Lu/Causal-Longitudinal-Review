@@ -425,65 +425,48 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
   wmean3_s <- colSums(exp_prob2)/colSums(obs_prob2)
   # wmean_s<-cbind(rep(1,ntot),wmean2_s, wmean3_s)
   
-  #Multinomial sampling - unweighted error variance:
-  
-  inits1<-c(30,5,0.2,16,36,49)
-  nboot = 1000
-  
-  bootest1<-numeric(nboot)
-  
-  for (i in 1:nboot) {
-    alpha <- rep(1/ntot, ntot)
-    bootidx <- as.matrix(rep(1:ntot, rmultinom(1, ntot, alpha)))
+  # we require wide format data, requiring 1 patient per row;
+  wloglik_normal<-function(param,
+                           Y,
+                           A,
+                           weight){
+    #number of observations;
+    n <- length(Y)
+    theta <- param[1:dim(A)[2]] #causal parameters on the mean
+    #number of parameter is determined by number of treatment variables, plus intercept;
+    sigma <- param[(dim(A)[2]+1)] # the remaining the parameter represent the standard deviation;
+    mmat <- as.matrix(A) #design matrix of the causal outcome model, e.g., A = cbind(1, a_1, a_2);
+    logl<- -0.5*log(sigma^2) - 0.5*((Y - mmat%*%theta)^2)/(sigma^2)
+    wlogl<-sum(weight*logl)
     
-    maxim <- optim(inits1, fn=loglik,
-                   resp1=obs$y1[bootidx],
-                   resp2=obs$y2[bootidx],
-                   resp3=obs$y3[bootidx],
-                   mmat1=cbind(1,obs$cumz1[bootidx],1),
-                   mmat2=cbind(1,obs$cumz2[bootidx],2),
-                   mmat3=cbind(1,obs$cumz3[bootidx],3),
-                   weight=wmean_s[bootidx,],
-                   control=list(fnscale=-1),
-                   method='BFGS', hessian=F)
-    bootest1[i] <- maxim$par[2]
-    
-    # if (i %% 50 == 0) {
-    #   print(i)
-    # }
+    return(wlogl)
   }
   
-  mean(bootest1)
-  var(bootest1)
-  quantile(bootest1, probs=c(0.025,0.975))
+  # Dirichlet sampling
   
-  # Dirichlet sampling - unweighted error:
-  bootest3<-numeric(nboot)
+  inits1<-c(0.1,0.1,0.1,0.1,4) #first few for mean parameters + 1 variance parameter
+  nboot <- 1000
+  bootest<-numeric(nboot)
   
   for (j in 1:nboot) {
-    alpha <- as.numeric(rdirichlet(1, rep(1.0, ntot)))
-    
+    alpha <- as.numeric(rdirichlet(1, rep(1.0, length(testdata$y))))
     maxim <- optim(inits1,
-                   fn=loglik,
-                   resp1=obs$y1,
-                   resp2=obs$y2,
-                   resp3=obs$y3,
-                   mmat1=cbind(1,obs$cumz1,1),
-                   mmat2=cbind(1,obs$cumz2,2),
-                   mmat3=cbind(1,obs$cumz3,3),
-                   weight=alpha*wmean_s,
+                   fn=wloglik_normal,
+                   Y=testdata$y,
+                   A=cbind(1,testdata$a_1, testdata$a_2, testdata$a_1*testdata$a_2), #three mean parameters (intercept + coefficient for a_1 and coefficient for a_2);
+                   weight=alpha*wmean,
                    control=list(fnscale=-1), method='BFGS', hessian=F)
-    bootest3[j] <- maxim$par[2]
+    bootest[j] <- maxim$par[2]+maxim$par[3]+maxim$par[4] #difference on the mean of Y between always treated and never treated;
     
-    # if (j %% 50 == 0) {
+    # if (j %% 100 == 0) {
     #   print(j)
     # }
   }
   
-  
-  mean(bootest3)
-  var(bootest3)
-  quantile(bootest3, probs=c(0.025,0.975))
+  results.it[1,22] <- mean(bootest)
+  results.it[1,23] <- sd(bootest)
+  results.it[1,24:25] <- quantile(bootest, probs=c(0.025,0.975))
+
   
   # est.sim <- rep(NA, B)
   # est.msm <- rep(NA, B)
