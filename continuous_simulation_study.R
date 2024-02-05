@@ -142,9 +142,9 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
     library(gtsummary)
     library(SuperLearner)
     library(WeightIt)
+    library(CBPS)
     library(mvtnorm)
     library(nnet)
-    library(MCMCpack)
     library(wgeesel)
     library(lme4)
     library(geepack)
@@ -318,12 +318,26 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
   results.it[1,19] <- sqrt(p11.se^2+p00.se^2)
   results.it[1,20:21] <- c(results.it[1,18]-1.96*sqrt(p11.se^2+p00.se^2),
                            results.it[1,18]+1.96*sqrt(p11.se^2+p00.se^2))
+  
+  # robust weights using CBPS
+  
+  dat1_lag <- dat1_new %>%                            
+    group_by(id) %>%
+    dplyr::mutate(lagged_a = lag(a, n = 1, default = 0)) # default = NA?
+  
+  cbmsm.out <-CBMSM(a ~ w1 + w2 + L1 + L2 + lagged_a, # How to specify two sets of covariates? do-able according to the document
+                    id=dat1_lag$id, time=dat1_lag$visit, data=dat1_lag,
+                    type="MSM",twostep=TRUE,time.vary=TRUE)
+  data(Blackwell)
+  
+  
+  
   # Baysian MSMs
   
   # JAGS
   
   # Bayesian inference 1. BMSM
-  # first obtain MCMC sample for weights! from posterier distribution of treatment assignment parameters;
+  # first obtain MCMC sample for weights! from posterior distribution of treatment assignment parameters;
   jags.data<-list(w1=w1, w2=w2, a_1=a_1, a_1m= a_1, L1_1=L1_1,  L2_1=L2_1, 
                                 a_2=a_2, a_2m=a_2, L1_2 = L1_2 , L2_2=L2_2, N = ntot)
   jags.params<-c("b10","b11","b12","b13","b14",
