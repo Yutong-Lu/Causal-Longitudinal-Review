@@ -599,7 +599,9 @@ mysim.bin <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000, B=1000
       # need to estimate OR for logistic regression
       # (p11/(1-p11))/(p00/(1-p00))
       bootest2[j] <- (expit(maxim$par[1]+maxim$par[2]+maxim$par[3]+maxim$par[4])/(1-expit(maxim$par[1]+maxim$par[2]+maxim$par[3]+maxim$par[4])))/(expit(maxim$par[1])/(1-expit(maxim$par[1])))
-      # bootest2[j] <- expit(maxim$par[1]+maxim$par[2]+maxim$par[3]+maxim$par[4]) - expit(maxim$par[1]) #difference on the mean of Y between always treated and never treated;
+      
+      # OR we can report difference on the mean of Y between always treated and never treated;
+      # bootest2[j] <- expit(maxim$par[1]+maxim$par[2]+maxim$par[3]+maxim$par[4]) - expit(maxim$par[1]) 
       
       # if (j %% 100 == 0) {
       #   print(j)

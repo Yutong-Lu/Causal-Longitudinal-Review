@@ -153,6 +153,7 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
     library(R2jags)
     library(coda) #new package;
     library(runjags)
+    library(dbarts)
     
   # true value;
   # each method and each setting, est, se(est), low 95%CI, upper 95%CI;
@@ -161,7 +162,7 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
   # i=1
   set.seed(i+1234)
   
-  results.it <- matrix(NA, 1, 21)
+  results.it <- matrix(NA, 1, 41)
   
   # Visit 1
   w1 <- rbinom(ntot, 1, prob = 0.5) #50-50 male and female (reference);
@@ -319,18 +320,117 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
   results.it[1,20:21] <- c(results.it[1,18]-1.96*sqrt(p11.se^2+p00.se^2),
                            results.it[1,18]+1.96*sqrt(p11.se^2+p00.se^2))
   
+  # try cbps and bart methods
+  
+  # cbps
+  
+  # based on simulation setup
+  
+  Wmsm.out.sim.cbps <- weightitMSM(list(a_1 ~ w1 + w2 + L1_1 + L2_1,
+                                   a_2 ~ w1 + w2 + L1_2 + L2_2 + a_1),
+                              data = dat1, method = "cbps",
+                              stabilize = TRUE)
+  
+  cont_design <- svydesign(id=~1, weights = Wmsm.out.sim.cbps$weights, data = dat1)
+  cont_mod <- svyglm(y ~ a_1*a_2, design = cont_design)
+  p11 <- as.data.frame(predict(cont_mod, newdata = data.frame(a_1=1, a_2=1)))[[1]]
+  p11.se <- as.data.frame(predict(cont_mod, newdata = data.frame(a_1=1, a_2=1)))[[2]]
+  p00 <- as.data.frame(predict(cont_mod, newdata = data.frame(a_1=0, a_2=0)))[[1]]
+  p00.se <- as.data.frame(predict(cont_mod, newdata = data.frame(a_1=0, a_2=0)))[[2]]
+  results.it[1,22] <- p11 - p00
+  results.it[1,23] <- sqrt(p11.se^2+p00.se^2)
+  results.it[1,24:25] <- c(results.it[1,14]-1.96*sqrt(p11.se^2+p00.se^2),
+                           results.it[1,14]+1.96*sqrt(p11.se^2+p00.se^2))
+  
+  # kitchen sink approach
+  
+  Wmsm.out.cbps <- weightitMSM(list(a_1 ~ w1 + w2 + L1_1 + L2_1,
+                               a_2 ~ w1 + w2 + L1_1 + L2_1 + L1_2 + L2_2 + a_1),
+                          data = dat1, method = "cbps",
+                          stabilize = TRUE)
+  
+  # estimate treatment effect
+  cont_design <- svydesign(id=~1, weights = Wmsm.out.cbps$weights, data = dat1)
+  cont_mod <- svyglm(y ~ a_1*a_2, design = cont_design)
+  p11 <- as.data.frame(predict(cont_mod, newdata = data.frame(a_1=1, a_2=1)))[[1]]
+  p11.se <- as.data.frame(predict(cont_mod, newdata = data.frame(a_1=1, a_2=1)))[[2]]
+  p00 <- as.data.frame(predict(cont_mod, newdata = data.frame(a_1=0, a_2=0)))[[1]]
+  p00.se <- as.data.frame(predict(cont_mod, newdata = data.frame(a_1=0, a_2=0)))[[2]]
+  results.it[1,26] <- p11 - p00
+  results.it[1,27] <- sqrt(p11.se^2+p00.se^2)
+  results.it[1,28:29] <- c(results.it[1,18]-1.96*sqrt(p11.se^2+p00.se^2),
+                           results.it[1,18]+1.96*sqrt(p11.se^2+p00.se^2))
+  
+  # bart
+  
+  # based on simulation setup
+  
+  Wmsm.out.sim.bart <- weightitMSM(list(a_1 ~ w1 + w2 + L1_1 + L2_1,
+                                        a_2 ~ w1 + w2 + L1_2 + L2_2 + a_1),
+                                   data = dat1, method = "bart",
+                                   stabilize = TRUE)
+  
+  cont_design <- svydesign(id=~1, weights = Wmsm.out.sim.bart$weights, data = dat1)
+  cont_mod <- svyglm(y ~ a_1*a_2, design = cont_design)
+  p11 <- as.data.frame(predict(cont_mod, newdata = data.frame(a_1=1, a_2=1)))[[1]]
+  p11.se <- as.data.frame(predict(cont_mod, newdata = data.frame(a_1=1, a_2=1)))[[2]]
+  p00 <- as.data.frame(predict(cont_mod, newdata = data.frame(a_1=0, a_2=0)))[[1]]
+  p00.se <- as.data.frame(predict(cont_mod, newdata = data.frame(a_1=0, a_2=0)))[[2]]
+  results.it[1,30] <- p11 - p00
+  results.it[1,31] <- sqrt(p11.se^2+p00.se^2)
+  results.it[1,32:33] <- c(results.it[1,14]-1.96*sqrt(p11.se^2+p00.se^2),
+                           results.it[1,14]+1.96*sqrt(p11.se^2+p00.se^2))
+  
+  # kitchen sink approach
+  
+  Wmsm.out.bart <- weightitMSM(list(a_1 ~ w1 + w2 + L1_1 + L2_1,
+                                    a_2 ~ w1 + w2 + L1_1 + L2_1 + L1_2 + L2_2 + a_1),
+                               data = dat1, method = "bart",
+                               stabilize = TRUE)
+  
+  # estimate treatment effect
+  cont_design <- svydesign(id=~1, weights = Wmsm.out.bart$weights, data = dat1)
+  cont_mod <- svyglm(y ~ a_1*a_2, design = cont_design)
+  p11 <- as.data.frame(predict(cont_mod, newdata = data.frame(a_1=1, a_2=1)))[[1]]
+  p11.se <- as.data.frame(predict(cont_mod, newdata = data.frame(a_1=1, a_2=1)))[[2]]
+  p00 <- as.data.frame(predict(cont_mod, newdata = data.frame(a_1=0, a_2=0)))[[1]]
+  p00.se <- as.data.frame(predict(cont_mod, newdata = data.frame(a_1=0, a_2=0)))[[2]]
+  results.it[1,34] <- p11 - p00
+  results.it[1,35] <- sqrt(p11.se^2+p00.se^2)
+  results.it[1,36:37] <- c(results.it[1,18]-1.96*sqrt(p11.se^2+p00.se^2),
+                           results.it[1,18]+1.96*sqrt(p11.se^2+p00.se^2))
+  
+  
+  # 1. try CBMSM weight on surveyweight
+  
+  # 2. try CBPS with two steps, dont select glm option (stablized vs not stablized)
+  
+  # not statblized = 1/p1*p2
+  # stablized = (a_1 ~ 1)*(a_2 ~ a_1)/p1*p2
+  # numerator: predicted probs from glm?
+  # prop score: prob for receving treat (fitted.values), weight = 1/prop score
+  
+  # CBPS(list(a_1 ~ w1 + w2 + L1_1 + L2_1,
+  #           a_2 ~ w1 + w2 + L1_1 + L2_1 + L1_2 + L2_2 + a_1),
+  #      id=dat1$id, time=dat1$visit, data=dat1)$weights
+  # 
+  # CBPS(a_2 ~ w1 + w2 + L1_1 + L2_1 + L1_2 + L2_2 + a_1, 
+  #      id=dat1$id, time=dat1$visit, data=dat1)$weights
+  
   # robust weights using CBPS
   
-  dat1_lag <- dat1_new %>%                            
-    group_by(id) %>%
-    dplyr::mutate(lagged_a = lag(a, n = 1, default = 0)) # default = NA?
-  
-  cbmsm.out <-CBMSM(a ~ w1 + w2 + L1 + L2 + lagged_a, # How to specify two sets of covariates? do-able according to the document
-                    id=dat1_lag$id, time=dat1_lag$visit, data=dat1_lag,
-                    type="MSM",twostep=TRUE,time.vary=TRUE)
-  data(Blackwell)
-  
-  
+  # dat1_lag <- dat1_new %>%                            
+  #   group_by(id) %>%
+  #   dplyr::mutate(lagged_a = lag(a, n = 1, default = 0),
+  #                 visit = as.numeric(visit)) # or should we use default = NA?
+  # 
+  # dat1_lag <- dat1_lag %>% 
+  #   arrange(., visit)
+  # 
+  # # limitation: cannot code lag for L1 and L2, but not a big problem bc the strong corr btw L1_1 and L1_2
+  # CBMSM(a ~ w1 + w2 + L1 + L2 + lagged_a, # How to specify two sets of covariates? do-able according to the document
+  #                   id=dat1_lag$id, time=dat1_lag$visit, data=dat1_lag,
+  #                   type="MSM",twostep=TRUE)$weights
   
   # Baysian MSMs
   
@@ -468,9 +568,9 @@ mysim.cont <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000) {
     # }
   }
   
-  results.it[1,22] <- mean(bootest)
-  results.it[1,23] <- sd(bootest)
-  results.it[1,24:25] <- quantile(bootest, probs=c(0.025,0.975))
+  results.it[1,38] <- mean(bootest)
+  results.it[1,39] <- sd(bootest)
+  results.it[1,40:41] <- quantile(bootest, probs=c(0.025,0.975))
 
   
   # est.sim <- rep(NA, B)
