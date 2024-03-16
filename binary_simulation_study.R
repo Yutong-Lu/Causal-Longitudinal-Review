@@ -417,9 +417,74 @@ mysim.bin <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000, B=1000
     p11 <- predict(bin_mod, newdata = data.frame(a_1=1, a_2=1), type = "response")[1]
     p00 <- predict(bin_mod, newdata = data.frame(a_1=0, a_2=0), type = "response")[1]
     results.it[1,18] <- (p11/(1-p11))/(p00/(1-p00))
+    
+    # try cbps and bart methods
+    
+    # cbps
+    
+    # based on simulation setup
+    
+    Wmsm.out.sim.cbps <- weightitMSM(list(a_1 ~ w1 + w2 + L1_1 + L2_1,
+                                          a_2 ~ w1 + w2 + L1_2 + L2_2 + a_1),
+                                     data = dat1, method = "cbps",
+                                     stabilize = TRUE)
+    
+    bin_design <- svydesign(id=~1, weights = Wmsm.out.sim.cbps$weights, data = dat2)
+    bin_mod <- svyglm(y ~ a_1*a_2, family = "binomial", design = bin_design)
+    p11 <- predict(bin_mod, newdata = data.frame(a_1=1, a_2=1), type = "response")[1]
+    p00 <- predict(bin_mod, newdata = data.frame(a_1=0, a_2=0), type = "response")[1]
+    results.it[1,22] <- (p11/(1-p11))/(p00/(1-p00))
+    
+    # kitchen sink approach
+    
+    Wmsm.out.ks.cbps <- weightitMSM(list(a_1 ~ w1 + w2 + L1_1 + L2_1,
+                                      a_2 ~ w1 + w2 + L1_1 + L2_1 + L1_2 + L2_2 + a_1),
+                                 data = dat1, method = "cbps",
+                                 stabilize = TRUE)
+    
+    # estimate treatment effect
+    
+    bin_design <- svydesign(id=~1, weights = Wmsm.out.ks.cbps$weights, data = dat2)
+    bin_mod <- svyglm(y ~ a_1*a_2, family = "binomial", design = bin_design)
+    p11 <- predict(bin_mod, newdata = data.frame(a_1=1, a_2=1), type = "response")[1]
+    p00 <- predict(bin_mod, newdata = data.frame(a_1=0, a_2=0), type = "response")[1]
+    results.it[1,26] <- (p11/(1-p11))/(p00/(1-p00))
+    
+    # bart
+    
+    # based on simulation setup
+    
+    Wmsm.out.sim.bart <- weightitMSM(list(a_1 ~ w1 + w2 + L1_1 + L2_1,
+                                          a_2 ~ w1 + w2 + L1_2 + L2_2 + a_1),
+                                     data = dat1, method = "bart",
+                                     stabilize = TRUE)
+    
+    bin_design <- svydesign(id=~1, weights = Wmsm.out.sim.bart$weights, data = dat2)
+    bin_mod <- svyglm(y ~ a_1*a_2, family = "binomial", design = bin_design)
+    p11 <- predict(bin_mod, newdata = data.frame(a_1=1, a_2=1), type = "response")[1]
+    p00 <- predict(bin_mod, newdata = data.frame(a_1=0, a_2=0), type = "response")[1]
+    results.it[1,30] <- (p11/(1-p11))/(p00/(1-p00))
+    
+    # kitchen sink approach
+    
+    Wmsm.out.ks.bart <- weightitMSM(list(a_1 ~ w1 + w2 + L1_1 + L2_1,
+                                      a_2 ~ w1 + w2 + L1_1 + L2_1 + L1_2 + L2_2 + a_1),
+                                 data = dat1, method = "bart",
+                                 stabilize = TRUE)
+    
+    # estimate treatment effect
+    bin_design <- svydesign(id=~1, weights = Wmsm.out.ks.bart$weights, data = dat2)
+    bin_mod <- svyglm(y ~ a_1*a_2, family = "binomial", design = bin_design)
+    p11 <- predict(bin_mod, newdata = data.frame(a_1=1, a_2=1), type = "response")[1]
+    p00 <- predict(bin_mod, newdata = data.frame(a_1=0, a_2=0), type = "response")[1]
+    results.it[1,34] <- (p11/(1-p11))/(p00/(1-p00))
   
-    est.msm.or <- rep(NA, B)
-    est.weightit.or <- rep(NA, B)
+    est.ps.sim.or <- rep(NA, B)
+    est.ps.ks.or <- rep(NA, B)
+    est.cbps.sim.or <- rep(NA, B)
+    est.cbps.ks.or <- rep(NA, B)
+    est.bart.sim.or <- rep(NA, B)
+    est.bart.ks.or <- rep(NA, B)
   
     for (draw in 1:B){
       set.seed(draw)
@@ -429,6 +494,8 @@ mysim.bin <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000, B=1000
       # dat2b <- dat2b %>%
       #   mutate(id = rep(1:1000),
       #          cum_a = a_1 + a_2)
+      
+      # method ps
   
       # calculate using simulation setup
     
@@ -441,7 +508,7 @@ mysim.bin <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000, B=1000
       bin_mod <- svyglm(y ~ a_1*a_2, family = "binomial", design = bin_design)
       p11 <- predict(bin_mod, newdata = data.frame(a_1=1, a_2=1), type = "response")[1]
       p00 <- predict(bin_mod, newdata = data.frame(a_1=0, a_2=0), type = "response")[1]
-      est.msm.or[draw] <- (p11/(1-p11))/(p00/(1-p00))
+      est.ps.sim.or[draw] <- (p11/(1-p11))/(p00/(1-p00))
     
       # calculate using kitchen sink approach
     
@@ -454,18 +521,94 @@ mysim.bin <- function(outfile, from=1, to=4, ntot=1000, samplesize=10000, B=1000
       cum.fit <- svyglm(y ~ a_1*a_2, design = d.w.msm, family = "binomial")
       p11 <- predict(cum.fit, newdata = data.frame(a_1=1, a_2=1), type = "response")[1]
       p00 <- predict(cum.fit, newdata = data.frame(a_1=0, a_2=0), type = "response")[1]
-      est.weightit.or[draw] <- (p11/(1-p11))/(p00/(1-p00))
+      est.ps.ks.or[draw] <- (p11/(1-p11))/(p00/(1-p00))
+      
+      # method cbps
+      
+      Wmsm.out.sim.cbps <- weightitMSM(list(a_1 ~ w1 + w2 + L1_1 + L2_1,
+                                            a_2 ~ w1 + w2 + L1_2 + L2_2 + a_1),
+                                       data = dat1, method = "cbps",
+                                       stabilize = TRUE)
+      
+      bin_design <- svydesign(id=~1, weights = Wmsm.out.sim.cbps$weights, data = dat2b)
+      bin_mod <- svyglm(y ~ a_1*a_2,  family = "binomial", design = bin_design)
+      p11 <- predict(bin_mod, newdata = data.frame(a_1=1, a_2=1), type = "response")[1]
+      p00 <- predict(bin_mod, newdata = data.frame(a_1=0, a_2=0), type = "response")[1]
+      est.cbps.sim.or[draw] <- (p11/(1-p11))/(p00/(1-p00))
+      
+      # kitchen sink approach
+      
+      Wmsm.out.ks.cbps <- weightitMSM(list(a_1 ~ w1 + w2 + L1_1 + L2_1,
+                                        a_2 ~ w1 + w2 + L1_1 + L2_1 + L1_2 + L2_2 + a_1),
+                                   data = dat1, method = "cbps",
+                                   stabilize = TRUE)
+      
+      # estimate treatment effect
+      
+      bin_design <- svydesign(id=~1, weights = Wmsm.out.ks.cbps$weights, data = dat2b)
+      bin_mod <- svyglm(y ~ a_1*a_2,  family = "binomial", design = bin_design)
+      p11 <- predict(bin_mod, newdata = data.frame(a_1=1, a_2=1), type = "response")[1]
+      p00 <- predict(bin_mod, newdata = data.frame(a_1=0, a_2=0), type = "response")[1]
+      est.cbps.ks.or[draw] <- (p11/(1-p11))/(p00/(1-p00))
+      
+      # method bart
+      
+      Wmsm.out.sim.bart <- weightitMSM(list(a_1 ~ w1 + w2 + L1_1 + L2_1,
+                                            a_2 ~ w1 + w2 + L1_2 + L2_2 + a_1),
+                                       data = dat1, method = "cbps",
+                                       stabilize = TRUE)
+      
+      bin_design <- svydesign(id=~1, weights = Wmsm.out.sim.bart$weights, data = dat2b)
+      bin_mod <- svyglm(y ~ a_1*a_2,  family = "binomial", design = bin_design)
+      p11 <- predict(bin_mod, newdata = data.frame(a_1=1, a_2=1), type = "response")[1]
+      p00 <- predict(bin_mod, newdata = data.frame(a_1=0, a_2=0), type = "response")[1]
+      est.bart.sim.or[draw] <- (p11/(1-p11))/(p00/(1-p00))
+      
+      # kitchen sink approach
+      
+      Wmsm.out.ks.bart <- weightitMSM(list(a_1 ~ w1 + w2 + L1_1 + L2_1,
+                                        a_2 ~ w1 + w2 + L1_1 + L2_1 + L1_2 + L2_2 + a_1),
+                                   data = dat1, method = "cbps",
+                                   stabilize = TRUE)
+      
+      # estimate treatment effect
+      
+      bin_design <- svydesign(id=~1, weights = Wmsm.out.ks.bart$weights, data = dat2b)
+      bin_mod <- svyglm(y ~ a_1*a_2,  family = "binomial", design = bin_design)
+      p11 <- predict(bin_mod, newdata = data.frame(a_1=1, a_2=1), type = "response")[1]
+      p00 <- predict(bin_mod, newdata = data.frame(a_1=0, a_2=0), type = "response")[1]
+      est.bart.ks.or[draw] <- (p11/(1-p11))/(p00/(1-p00))
     }
   
-    est.msm.or <- unlist(est.msm.or) # unlist to calculate mean and sd
-    # results.it[1,14]<-mean(est.msm.or)
-    results.it[1,15]<-sd(est.msm.or)
-    results.it[1,16:17]<-c(results.it[1,14]-1.96*sd(est.msm.or), results.it[1,14]+1.96*sd(est.msm.or))
+    est.ps.sim.or <- unlist(est.ps.sim.or) # unlist to calculate mean and sd
+    # results.it[1,14]<-mean(est.ps.sim.or)
+    results.it[1,15]<-sd(est.ps.sim.or)
+    results.it[1,16:17]<-c(results.it[1,14]-1.96*sd(est.ps.sim.or), results.it[1,14]+1.96*sd(est.ps.sim.or))
     
-    est.weightit.or <- unlist(est.weightit.or)
-    # results.it[1,18]<-mean(est.weightit.or)
-    results.it[1,19]<-sd(est.weightit.or)
-    results.it[1,20:21]<-c(results.it[1,18]-1.96*sd(est.weightit.or), results.it[1,18]+1.96*sd(est.weightit.or))
+    est.ps.ks.or <- unlist(est.ps.ks.or)
+    # results.it[1,18]<-mean(est.ps.ks.or)
+    results.it[1,19]<-sd(est.ps.ks.or)
+    results.it[1,20:21]<-c(results.it[1,18]-1.96*sd(est.ps.ks.or), results.it[1,18]+1.96*sd(est.ps.ks.or))
+    
+    est.cbps.sim.or <- unlist(est.cbps.sim.or)
+    # results.it[1,22]<-mean(est.cbps.sim.or)
+    results.it[1,23]<-sd(est.cbps.sim.or)
+    results.it[1,24:25]<-c(results.it[1,22]-1.96*sd(est.cbps.sim.or), results.it[1,22]+1.96*sd(est.cbps.sim.or))
+    
+    est.cbps.ks.or <- unlist(est.cbps.ks.or)
+    # results.it[1,26]<-mean(est.cbps.ks.or)
+    results.it[1,27]<-sd(est.cbps.ks.or)
+    results.it[1,28:29]<-c(results.it[1,26]-1.96*sd(est.cbps.ks.or), results.it[1,26]+1.96*sd(est.cbps.ks.or))
+    
+    est.bart.sim.or <- unlist(est.bart.sim.or)
+    # results.it[1,30]<-mean(est.bart.sim.or)
+    results.it[1,31]<-sd(est.bart.sim.or)
+    results.it[1,32:33]<-c(results.it[1,30]-1.96*sd(est.bart.sim.or), results.it[1,30]+1.96*sd(est.bart.sim.or))
+    
+    est.bart.ks.or <- unlist(est.bart.ks.or)
+    # results.it[1,34]<-mean(est.bart.ks.or)
+    results.it[1,35]<-sd(est.bart.ks.or)
+    results.it[1,36:37]<-c(results.it[1,34]-1.96*sd(est.bart.ks.or), results.it[1,34]+1.96*sd(est.bart.ks.or))
     
     # Baysian MSMs
     
